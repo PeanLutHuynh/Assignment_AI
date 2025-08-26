@@ -24,15 +24,24 @@ class HelloProblem:
     def get_cost(self, state, action):
         return 1
 
-# Các thuật toán TỐI ƯU với HEURISTIC cho HelloProblem
+# Các thuật toán với HEURISTIC LINH HOẠT cho HelloProblem
 
-def is_on_correct_path(state):
-    """Kiểm tra xem state có đang đi đúng hướng HELLO WORLD không"""
+def is_promising_path(state):
+    """Relaxed heuristic - cho phép sai vài ký tự"""
     if len(state) > len(GOAL):
         return False
-    return GOAL.startswith(state)
+    if len(state) == 0:
+        return True
+    
+    # Tính số ký tự khác nhau
+    differences = sum(1 for i, char in enumerate(state) 
+                     if i < len(GOAL) and char != GOAL[i])
 
-# 1. BFS với heuristic
+    # Cho phép sai tối đa 2 ký tự hoặc 20%
+    max_errors = max(1, min(2, len(state) // 5))
+    return differences <= max_errors
+
+# 1. BFS với heuristic linh hoạt
 def bfs_hello():
     problem = HelloProblem()
     start = problem.initial_state
@@ -47,30 +56,26 @@ def bfs_hello():
     while queue:
         current, path = queue.popleft()
         nodes_explored += 1
-        
-        # Early stopping nếu quá nhiều nodes
-        if nodes_explored > 100000:
-            print(f"BFS dừng sớm sau {nodes_explored} nodes")
+
+        if nodes_explored > 1000000:
             break
             
         for action in problem.actions(current):
             next_state = problem.result(current, action)
             
-            # HEURISTIC: Chỉ tiếp tục nếu đi đúng hướng
-            if not is_on_correct_path(next_state):
-                continue
-                
             if next_state not in visited:
-                new_path = path + [next_state]
-                
-                if problem.is_goal(next_state):
-                    return new_path
-                
-                queue.append((next_state, new_path))
-                visited.add(next_state)
+                # Ưu tiên đường đúng, nhưng vẫn thử đường khác
+                if is_promising_path(next_state):
+                    new_path = path + [next_state]
+                    
+                    if problem.is_goal(next_state):
+                        return new_path
+                    
+                    queue.append((next_state, new_path))
+                    visited.add(next_state)
     return None
 
-# 2. UCS với heuristic
+# 2. UCS với heuristic linh hoạt
 def ucs_hello():
     problem = HelloProblem()
     start = problem.initial_state
@@ -86,9 +91,8 @@ def ucs_hello():
         cost, current, path = heapq.heappop(heap)
         nodes_explored += 1
         
-        # Early stopping
-        if nodes_explored > 100000:
-            print(f"UCS dừng sớm sau {nodes_explored} nodes")
+        # Tăng giới hạn
+        if nodes_explored > 1000000:
             break
             
         if current in visited:
@@ -100,19 +104,17 @@ def ucs_hello():
         
         for action in problem.actions(current):
             next_state = problem.result(current, action)
-            
-            # HEURISTIC: Chỉ tiếp tục nếu đi đúng hướng  
-            if not is_on_correct_path(next_state):
-                continue
                 
             if next_state not in visited:
-                new_cost = cost + problem.get_cost(current, action)
-                new_path = path + [next_state]
-                heapq.heappush(heap, (new_cost, next_state, new_path))
+                # Ưu tiên đường đúng nhưng cho phép khác
+                if is_promising_path(next_state):
+                    new_cost = cost + problem.get_cost(current, action)
+                    new_path = path + [next_state]
+                    heapq.heappush(heap, (new_cost, next_state, new_path))
     
     return None, float('inf')
 
-# 3. DFS với heuristic và timeout
+# 3. DFS với heuristic linh hoạt
 def dfs_hello(current='', path=None, visited=None, depth=0, max_depth=11):
     problem = HelloProblem()
     
@@ -128,21 +130,22 @@ def dfs_hello(current='', path=None, visited=None, depth=0, max_depth=11):
     if depth >= max_depth or current in visited:
         return None
     
-    # HEURISTIC: Chỉ tiếp tục nếu đi đúng hướng
-    if not is_on_correct_path(current):
+    # Ưu tiên đường đúng, nhưng vẫn thử đường khác
+    if not is_promising_path(current):
         return None
         
     visited.add(current)
     
     for action in problem.actions(current):
         next_state = problem.result(current, action)
-        if next_state not in visited and is_on_correct_path(next_state):
-            result = dfs_hello(next_state, path + [next_state], visited.copy(), depth + 1, max_depth)
-            if result:
-                return result
+        if next_state not in visited:
+            if is_promising_path(next_state):
+                result = dfs_hello(next_state, path + [next_state], visited.copy(), depth + 1, max_depth)
+                if result:
+                    return result
     return None
 
-# 4. DLS với heuristic
+# 4. DLS với heuristic linh hoạt
 def dls_hello(current='', limit=11, path=None, visited=None):
     problem = HelloProblem()
     
@@ -157,25 +160,25 @@ def dls_hello(current='', limit=11, path=None, visited=None):
     if limit <= 0 or current in visited:
         return None
     
-    # HEURISTIC: Chỉ tiếp tục nếu đi đúng hướng
-    if not is_on_correct_path(current):
+    # Ưu tiên đường đúng nhưng cho phép thử khác
+    if not is_promising_path(current):
         return None
         
     visited.add(current)
     
     for action in problem.actions(current):
         next_state = problem.result(current, action)
-        if next_state not in visited and is_on_correct_path(next_state):
-            result = dls_hello(next_state, limit - 1, path + [next_state], visited.copy())
-            if result:
-                return result
+        if next_state not in visited:
+            if is_promising_path(next_state):
+                result = dls_hello(next_state, limit - 1, path + [next_state], visited.copy())
+                if result:
+                    return result
     return None
 
-# 5. IDS với heuristic
+# 5. IDS với heuristic linh hoạt
 def ids_hello(max_depth=11):
     for depth in range(max_depth + 1):
         result = dls_hello('', depth)
         if result:
-            print(f"IDS tìm thấy ở độ sâu {depth}")
             return result
     return None

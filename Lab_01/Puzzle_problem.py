@@ -16,10 +16,10 @@ class PuzzleProblem:
     
     def __init__(self, initial_state=None):
         if initial_state is None:
-            # Initial state: chỉ thay đổi vài số từ goal để dễ giải
+            # Initial state:
             self.initial_state = [
                 [1, 4, 0],
-                [5, 2, 3],  # Đổi chỗ 0 và 4
+                [5, 2, 3],
                 [7, 6, 8]
             ]
         else:
@@ -115,6 +115,17 @@ def manhattan_distance(state):
                 distance += abs(i - goal_row) + abs(j - goal_col)
     return distance
 
+# Heuristic linh hoạt cho 8-puzzle
+def is_promising_state(state):
+    """Kiểm tra xem state có triển vọng dẫn đến goal không"""
+    # Manhattan distance không quá 30 (khoảng cách hợp lý)
+    distance = manhattan_distance(state)
+    return distance <= 30
+
+def get_heuristic_priority(state):
+    """Trả về độ ưu tiên dựa trên heuristic (càng nhỏ càng tốt)"""
+    return manhattan_distance(state)
+
 def find_goal_position(value):
     """Tìm vị trí của value trong goal state"""
     for i in range(3):
@@ -123,11 +134,11 @@ def find_goal_position(value):
                 return i, j
     return None
 
-# Các thuật toán TỐI ƯU với HEURISTIC cho 8-puzzle
 
-#1. BFS với heuristic
+# Các thuật toán TỐI ƯU với HEURISTIC cho 8-puzzle
+# 1. BFS với heuristic linh hoạt
 def bfs_puzzle():
-    """BFS cho 8-puzzle"""
+    """BFS cho 8-puzzle với heuristic guidance"""
     problem = PuzzleProblem()
     start = problem.initial_state
     
@@ -142,9 +153,8 @@ def bfs_puzzle():
         current, path = queue.popleft()
         nodes_explored += 1
         
-        # Early stopping
-        if nodes_explored > 1000000:
-            print(f"BFS dừng sớm sau {nodes_explored} nodes")
+        # Tăng giới hạn để tìm được nghiệm
+        if nodes_explored > 100000:
             break
             
         for action in problem.actions(current):
@@ -152,35 +162,37 @@ def bfs_puzzle():
             state_str = problem.state_to_string(next_state)
             
             if state_str not in visited:
-                new_path = path + [next_state]
-                
-                if problem.is_goal(next_state):
-                    return new_path
-                
-                queue.append((next_state, new_path))
-                visited.add(state_str)
+                # Sử dụng heuristic để ưu tiên nhưng không loại bỏ hoàn toàn
+                if is_promising_state(next_state):
+                    new_path = path + [next_state]
+                    
+                    if problem.is_goal(next_state):
+                        return new_path
+                    
+                    queue.append((next_state, new_path))
+                    visited.add(state_str)
     return None
 
-# 2. UCS với heuristic
+# 2. UCS với heuristic linh hoạt
 def ucs_puzzle():
-    """UCS cho 8-puzzle"""
+    """UCS cho 8-puzzle với heuristic guidance"""
     problem = PuzzleProblem()
     start = problem.initial_state
     
     if problem.is_goal(start):
         return [start], 0
     
-    heap = [(0, problem.state_to_string(start), start, [start])]
+    # Sử dụng heuristic để sắp xếp thứ tự ưu tiên
+    heap = [(get_heuristic_priority(start), 0, problem.state_to_string(start), start, [start])]
     visited = set()
     nodes_explored = 0
     
     while heap:
-        cost, state_str, current, path = heapq.heappop(heap)
+        _, cost, state_str, current, path = heapq.heappop(heap)
         nodes_explored += 1
         
-        # Early stopping
-        if nodes_explored > 1000000:
-            print(f"UCS dừng sớm sau {nodes_explored} nodes")
+        # Tăng giới hạn
+        if nodes_explored > 100000:
             break
             
         if state_str in visited:
@@ -194,16 +206,17 @@ def ucs_puzzle():
             next_state = problem.result(current, action)
             next_state_str = problem.state_to_string(next_state)
             
-            if next_state_str not in visited:
+            if next_state_str not in visited and is_promising_state(next_state):
                 new_cost = cost + problem.get_cost(current, action)
                 new_path = path + [next_state]
-                heapq.heappush(heap, (new_cost, next_state_str, next_state, new_path))
+                priority = new_cost + get_heuristic_priority(next_state) * 0.5  # A* style
+                heapq.heappush(heap, (priority, new_cost, next_state_str, next_state, new_path))
     
     return None, float('inf')
 
-# 3. DFS với heuristic
+# 3. DFS với heuristic linh hoạt
 def dfs_puzzle(current=None, path=None, visited=None, depth=0, max_depth=20):
-    """DFS cho 8-puzzle với giới hạn độ sâu"""
+    """DFS cho 8-puzzle với heuristic guidance"""
     problem = PuzzleProblem()
     
     if current is None:
@@ -222,8 +235,20 @@ def dfs_puzzle(current=None, path=None, visited=None, depth=0, max_depth=20):
         
     visited.add(state_str)
     
-    for action in problem.actions(current):
+    # Sắp xếp actions theo heuristic để ưu tiên đường tốt hơn
+    actions = problem.actions(current)
+    action_states = []
+    
+    for action in actions:
         next_state = problem.result(current, action)
+        if is_promising_state(next_state):
+            priority = get_heuristic_priority(next_state)
+            action_states.append((priority, action, next_state))
+    
+    # Sắp xếp theo heuristic (priority thấp = tốt hơn)
+    action_states.sort(key=lambda x: x[0])
+    
+    for _, action, next_state in action_states:
         next_state_str = problem.state_to_string(next_state)
         
         if next_state_str not in visited:
@@ -232,9 +257,9 @@ def dfs_puzzle(current=None, path=None, visited=None, depth=0, max_depth=20):
                 return result
     return None
 
-# 4. DLS với heuristic
+# 4. DLS với heuristic linh hoạt
 def dls_puzzle(current=None, limit=20, path=None, visited=None):
-    """DLS cho 8-puzzle"""
+    """DLS cho 8-puzzle với heuristic guidance"""
     problem = PuzzleProblem()
     
     if current is None:
@@ -253,8 +278,19 @@ def dls_puzzle(current=None, limit=20, path=None, visited=None):
         
     visited.add(state_str)
     
-    for action in problem.actions(current):
+    # Sắp xếp actions theo heuristic
+    actions = problem.actions(current)
+    action_states = []
+    
+    for action in actions:
         next_state = problem.result(current, action)
+        if is_promising_state(next_state):
+            priority = get_heuristic_priority(next_state)
+            action_states.append((priority, action, next_state))
+    
+    action_states.sort(key=lambda x: x[0])
+    
+    for _, action, next_state in action_states:
         next_state_str = problem.state_to_string(next_state)
         
         if next_state_str not in visited:
@@ -263,12 +299,11 @@ def dls_puzzle(current=None, limit=20, path=None, visited=None):
                 return result
     return None
 
-# 5. IDS với heuristic
+# 5. IDS với heuristic linh hoạt
 def ids_puzzle(max_depth=20):
-    """IDS cho 8-puzzle"""
+    """IDS cho 8-puzzle với heuristic guidance"""
     for depth in range(max_depth + 1):
         result = dls_puzzle(limit=depth)
         if result:
-            print(f"IDS tìm thấy ở độ sâu {depth}")
             return result
     return None
